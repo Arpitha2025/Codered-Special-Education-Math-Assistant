@@ -1,0 +1,6 @@
+# requirements.txt
+requests
+python-dotenv
+google-genai
+# mathpix client library might be mpxpy or similar, add it here:
+# mpxpy
