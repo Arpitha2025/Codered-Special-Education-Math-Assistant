@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accessible Study Assistant (Prototype)</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --brand: #0b5fff;
+      --ok: #0a7f2e;
+      --warn: #b85c00;
+      --error: #a40000;
+      --radius: 14px;
+      --line: 1.8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f1115; --fg:#f5f7fb; --muted:#a5adbd; --brand:#5b8aff; }
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      line-height: var(--line);
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: clamp(1.6rem, 2.2vw + 1rem, 2.2rem); margin: 0 0 12px; }
+    p.lead { color: var(--muted); margin-top: 0; }
+    .card { background: rgba(127,127,127,0.06); border: 1px solid rgba(127,127,127,0.2); border-radius: var(--radius); padding: 16px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 1fr; } }
+    fieldset { border: 1px solid rgba(127,127,127,0.35); border-radius: var(--radius); padding: 12px; }
+    legend { padding: 0 8px; font-weight: 600; }
+    label { display: block; margin: 6px 0; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,0.35); background: #fff; color: #111; }
+    @media (prefers-color-scheme: dark) { input[type="text"], textarea, select { background:#0b0d12; color:#f5f7fb; } }
+    textarea { min-height: 120px; }
+    .btn { appearance: none; border: none; border-radius: 12px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
+    .btn.primary { background: var(--brand); color: white; }
+    .btn.ghost { background: transparent; border: 1px solid rgba(127,127,127,0.4); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint { color: var(--muted); font-size: 0.95rem; }
+    .out { white-space: pre-wrap; font-size: 1rem; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .status { font-size: 0.95rem; color: var(--muted); }
+    .pill { display:inline-block; padding: 2px 10px; border-radius: 999px; background: rgba(91,138,255,0.15); border:1px solid rgba(91,138,255,0.35); }
+    .kbar { display:flex; gap:12px; align-items:center; }
+    .range { width: 180px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+  </style>
+</head>
+<body>
+  <a class="sr-only" href="#main">Skip to content</a>
+  <div class="wrap">
+    <header>
+      <h1>Accessible Study Assistant <span class="pill mono" aria-label="prototype">PROTOTYPE</span></h1>
+      <p class="lead">Upload a textbook, state your goal, select learning needs, and generate summaries or practice. Includes built‑in text‑to‑speech with adjustable speed.</p>
+    </header>
+
+    <main id="main" class="grid" aria-live="polite">
+      <!-- Controls -->
+      <section class="card" aria-labelledby="controls-title">
+        <h2 id="controls-title">Your request</h2>
+
+        <form id="form" novalidate>
+          <fieldset>
+            <legend>Learning profile (check all that apply)</legend>
+            <div class="row" role="group" aria-label="Disability checkboxes">
+              <label><input type="checkbox" name="disabilities" value="Dyslexia"> Dyslexia</label>
+              <label><input type="checkbox" name="disabilities" value="Dyscalculia"> Dyscalculia</label>
+              <label><input type="checkbox" name="disabilities" value="Dysgraphia"> Dysgraphia</label>
+              <label><input type="checkbox" name="disabilities" value="ADHD"> ADHD</label>
+              <label><input type="checkbox" name="disabilities" value="Executive function weaknesses"> Executive function weaknesses</label>
+              <label><input type="checkbox" name="disabilities" value="Language Disorder"> Language Disorder</label>
+              <label><input type="checkbox" name="disabilities" value="APD"> Auditory Processing Disorder (APD)</label>
+              <label><input type="checkbox" name="disabilities" value="Vision impairment / blindness"> Vision impairment / blindness</label>
+              <label><input type="checkbox" name="disabilities" value="Hearing impairment / Deaf"> Hearing impairment / Deaf</label>
+              <label><input type="checkbox" name="disabilities" value="Chronic illnesses"> Chronic illnesses</label>
+            </div>
+          </fieldset>
+
+          <label for="purpose">Purpose</label>
+          <select id="purpose" name="purpose" aria-describedby="purpose-help">
+            <option value="exam">Prepare for an upcoming exam</option>
+            <option value="understand">Understand the curriculum/chapter better</option>
+            <option value="practice">Get practice problems with worked solutions</option>
+            <option value="notes">Create simplified notes & definitions</option>
+            <option value="custom">Other (I'll describe below)</option>
+          </select>
+          <p id="purpose-help" class="hint">Pick the closest match. You can add details in your request.</p>
+
+          <label for="prompt">What do you need?</label>
+          <textarea id="prompt" name="prompt" placeholder="e.g., Summarize Chapter 3 (Vectors) in short steps and give 5 scaffolded practice problems for ADHD + Dyscalculia."></textarea>
+
+          <label for="file">Upload textbook or chapter (PDF)</label>
+          <input id="file" name="file" type="file" accept="application/pdf" />
+          <p id="file-note" class="status">No file selected.</p>
+
+          <div class="row" style="margin-top:10px;">
+            <button id="generate" type="submit" class="btn primary" disabled>Generate</button>
+            <button id="clear" type="button" class="btn ghost">Clear</button>
+            <span id="gen-status" class="status" aria-live="polite"></span>
+          </div>
+        </form>
+
+        <hr />
+
+        <div class="kbar" aria-label="Text to speech controls">
+          <strong>Read aloud</strong>
+          <label class="row" for="rate">Speed <span class="hint" id="rate-val">1.0×</span></label>
+          <input id="rate" class="range" type="range" min="0.5" max="1.6" step="0.05" value="0.95" aria-labelledby="rate" />
+          <button id="speak" class="btn">Play</button>
+          <button id="pause" class="btn">Pause</button>
+          <button id="stop" class="btn">Stop</button>
+        </div>
+        <p class="hint">Keyboard: <kbd>Space</kbd> Play/Pause, <kbd>-</kbd>/<kbd>=</kbd> slower/faster.</p>
+      </section>
+
+      <!-- Output -->
+      <section class="card" aria-labelledby="out-title">
+        <h2 id="out-title">Result</h2>
+        <div id="out" class="out" aria-live="polite">Your generated content will appear here.</div>
+      </section>
+    </main>
+
+    <footer class="row" style="margin-top:18px;">
+      <span class="hint">Prototype: front‑end only. Connect a backend at <code class="mono">/api/rag</code> to use Gemini + RAG.</span>
+    </footer>
+  </div>
+
+  <script>
+    // ==== Simple state & helpers ====
+    const $ = (id) => document.getElementById(id);
+    const form = $("form");
+    const fileInput = $("file");
+    const fileNote = $("file-note");
+    const promptEl = $("prompt");
+    const purposeEl = $("purpose");
+    const genBtn = $("generate");
+    const clearBtn = $("clear");
+    const out = $("out");
+    const rate = $("rate");
+    const rateVal = $("rate-val");
+    const genStatus = $("gen-status");
+
+    const BACKEND_URL = ""; // e.g., "/api/rag" when you add a server
+
+    // Restore local prefs
+    const savedRate = localStorage.getItem("tts_rate");
+    if (savedRate) { rate.value = savedRate; rateVal.textContent = `${parseFloat(savedRate).toFixed(2)}×`; }
+
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files[0];
+      fileNote.textContent = f ? `Selected: ${f.name} (${Math.ceil(f.size/1024)} KB)` : 'No file selected.';
+      updateGenerateState();
+    });
+
+    promptEl.addEventListener('input', updateGenerateState);
+
+    function updateGenerateState() {
+      genBtn.disabled = !(promptEl.value.trim() && fileInput.files.length > 0);
+    }
+
+    clearBtn.addEventListener('click', () => {
+      form.reset(); out.textContent = 'Your generated content will appear here.'; fileNote.textContent = 'No file selected.'; genStatus.textContent='';
+      updateGenerateState();
+    });
+
+    // ==== Submit -> call backend or demo ====
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      genStatus.textContent = 'Working…';
+
+      // collect disabilities
+      const disabilities = Array.from(form.querySelectorAll('input[name="disabilities"]:checked')).map(x => x.value);
+
+      // Build payload
+      const payload = new FormData();
+      payload.append('purpose', purposeEl.value);
+      payload.append('prompt', promptEl.value.trim());
+      payload.append('disabilities', JSON.stringify(disabilities));
+      if (fileInput.files[0]) payload.append('file', fileInput.files[0]);
+
+      try {
+        let text;
+        if (BACKEND_URL) {
+          const res = await fetch(BACKEND_URL, { method: 'POST', body: payload });
+          if (!res.ok) throw new Error('Server error');
+          const data = await res.json();
+          text = data.text || 'No content returned.';
+        } else {
+          // Demo fallback (no server yet)
+          text = demoResponse(promptEl.value, disabilities);
+        }
+        out.textContent = text;
+        attachToTTS(text);
+        genStatus.textContent = BACKEND_URL ? 'Done.' : 'Demo response (no backend connected).';
+      } catch (err) {
+        console.error(err);
+        genStatus.textContent = 'Error. See console.';
+      }
+    });
+
+    function demoResponse(userPrompt, disabilities) {
+      const tags = disabilities.length ? `Adapted for: ${disabilities.join(', ')}` : 'No specific adaptations selected.';
+      return (
+`# Generated (demo)\n\n` +
+`**Purpose**: ${purposeEl.options[purposeEl.selectedIndex].text}\n\n` +
+`**Request**: ${userPrompt}\n\n` +
+`**${tags}**\n\n` +
+`## Summary\n` +
+`• Short, plain‑language explanation.\n` +
+`• Key definitions with simple examples.\n\n` +
+`## Practice (scaffolded)\n` +
+`1) Starter problem with a hint.\n` +
+`2) Medium problem with step‑by‑step.\n` +
+`3) Stretch problem + solution check.\n\n` +
+`## Next steps\n` +
+`• 5‑minute review + quick self‑quiz.\n`);
+    }
+
+    // ==== Text to Speech ====
+    const synth = window.speechSynthesis;
+    let utter = new SpeechSynthesisUtterance('');
+
+    function attachToTTS(text) {
+      synth.cancel();
+      utter = new SpeechSynthesisUtterance(stripMarkdown(text));
+      utter.rate = parseFloat(rate.value);
+    }
+
+    function stripMarkdown(md) {
+      return md
+        .replace(/^# .*$/gm, '')
+        .replace(/^## .*$/gm, '')
+        .replace(/^\*\*([^*]+)\*\*/g, '$1')
+        .replace(/^\* |^- /gm, '• ')
+        .replace(/`{1,3}([^`]+)`{1,3}/g, '$1');
+    }
+
+    $("speak").addEventListener('click', () => {
+      if (!utter.text) attachToTTS(out.textContent);
+      utter.rate = parseFloat(rate.value);
+      synth.cancel();
+      synth.speak(utter);
+    });
+    $("pause").addEventListener('click', () => { if (synth.speaking) synth.paused ? synth.resume() : synth.pause(); });
+    $("stop").addEventListener('click', () => synth.cancel());
+
+    rate.addEventListener('input', () => {
+      rateVal.textContent = `${parseFloat(rate.value).toFixed(2)}×`;
+      localStorage.setItem('tts_rate', rate.value);
+      if (synth.speaking && !synth.paused) { synth.cancel(); utter.rate = parseFloat(rate.value); synth.speak(utter); }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ') { e.preventDefault(); synth.speaking && !synth.paused ? synth.pause() : $("speak").click(); }
+      if (e.key === '-') { rate.stepDown(); rate.dispatchEvent(new Event('input')); }
+      if (e.key === '=') { rate.stepUp(); rate.dispatchEvent(new Event('input')); }
+    });
+  </script>
+</body>
+</html>
