@@ -2,7 +2,8 @@ import os
 import io
 import json
 import requests
-from flask import Flask, request, jsonify
+# 👇 NEW IMPORT: render_template is needed to serve the HTML file
+from flask import Flask, request, jsonify, render_template 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -12,10 +13,12 @@ load_dotenv()
 
 # --- Configuration ---
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max 16MB file upload
+# Max 16MB file upload (default in user's original code)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 
 # API Keys and URLs
-MATHPIX_URL = "https://api.mathpix.com/v3/text" # Using /v3/text for quick image/PDF snippets
+# Using /v3/text for quick image/PDF snippets
+MATHPIX_URL = "https://api.mathpix.com/v3/text" 
 MATHPIX_HEADERS = {
     "app_id": os.getenv("MATHPIX_APP_ID"),
     "app_key": os.getenv("MATHPIX_APP_KEY"),
@@ -31,13 +34,12 @@ GEMINI_MODEL = "gemini-2.5-flash"
 def call_mathpix_ocr(file_stream, filename):
     """Sends the uploaded file to the Mathpix API and returns the response JSON."""
     
-    # Mathpix request data - we ask for text, mathml, and LaTeX
+    # Mathpix request data - we ask for text, mathml, and LaTeX (latex_styled for full text)
     options = {
-        "formats": ["text", "mathml", "latex_styled"],
+        "formats": ["latex_styled"], # Use latex_styled as it provides a single string with both text and LaTeX
         "math_inline_delimiters": ["$", "$"],
         "text_delimiters": ["\n", "\n"],
         "conversion_delimiters": ["$$", "$$"],
-        "include_line_data": True # Important for distinguishing text from math
     }
 
     files = {
@@ -46,162 +48,149 @@ def call_mathpix_ocr(file_stream, filename):
     }
 
     try:
+        # Reset stream position to the beginning before sending
+        file_stream.seek(0)
         response = requests.post(MATHPIX_URL, headers=MATHPIX_HEADERS, files=files, timeout=60)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Mathpix API Error: {e}")
-        raise ValueError(f"OCR service failed: {e}")
+        # Raise an exception that the Flask route can catch
+        raise ValueError(f"OCR service failed or timed out. Check your Mathpix keys and document quality.")
 
 
-def parse_mathpix_output(ocr_response):
+def generate_system_instruction(disorder, context):
     """
-    Parses the flat Mathpix output into a structured, block-based format.
-    This is simplified; a full parser would analyze line_data for precise blocks.
-    Here we rely on Mathpix Markdown structure to split.
+    Creates a comprehensive system instruction for the Gemini model
+    to act as an accessible, RAG-enabled study assistant.
     """
+    base_persona = (
+        "You are an **Accessible Study Assistant** with expertise in mathematics and pedagogy. "
+        "Your primary goal is to answer the user's question based *only* on the provided context "
+        "(the textbook page content). "
+    )
     
-    # Split content by block-mode LaTeX delimiters ($$)
-    raw_blocks = ocr_response.get('latex_styled', '').split('$$')
-    
-    structured_content = []
-    
-    for i, block in enumerate(raw_blocks):
-        block = block.strip()
-        if not block:
-            continue
-
-        if block.startswith('\\begin') or block.startswith('\\['): # Heuristic for math environment
-            block_type = "equation"
-            # Attempt to find the corresponding MathML for the equation (very simplified)
-            # In a real app, you'd match the 'latex' with the 'mathml' block using coordinates/IDs from line_data
-            mathml_match = f"<math>{block.strip(' \\[').strip(' \\]')}</math>" # Placeholder for real MathML matching
-
-            # Use the raw LaTeX for the original_text/source
-            structured_content.append({
-                "id": i + 1,
-                "type": block_type,
-                "original_text": block, 
-                "mathml": ocr_response.get('mathml', '').replace('\\(', '$').replace('\\)', '$'), # Placeholder: In a real app, you'd isolate the MathML for this block.
-                "adapted_scaffolding": ""
-            })
-
-        else:
-            block_type = "prose"
-            structured_content.append({
-                "id": i + 1,
-                "type": block_type,
-                "original_text": block,
-                "adapted_text": ""
-            })
-            
-    return structured_content
-
-def adapt_content_with_gemini(content_block, disorder):
-    """Applies AI adaptation based on the specified disorder."""
-    
-    original_text = content_block.get("original_text", "")
-    prompt = ""
-
-    # --- Dyslexia / Language Adaptation (Prose) ---
-    if content_block["type"] == "prose" and disorder in ["Dyslexia", "Language Disorder"]:
-        prompt = (
-            f"You are an educational AI. Simplify the following math word problem for a student with Dyslexia/Language Disorder. "
-            f"Use simple sentences, short paragraphs, and **bold** the key mathematical operation words. "
-            f"Problem: {original_text}"
+    # --- Adaptive RAG Instructions ---
+    adaptive_instruction = ""
+    if disorder == "None":
+        adaptive_instruction = (
+            "Answer clearly and accurately, using standard academic language. "
+            "For math problems, provide a detailed, step-by-step solution."
         )
-        
-    # --- Dyscalculia / Executive Function Adaptation (Math) ---
-    elif content_block["type"] == "equation" and disorder in ["Dyscalculia", "Executive Function", "ADHD"]:
-        prompt = (
-            f"You are an adaptive learning AI. For the following math equation/concept (LaTeX format: {original_text}), "
-            f"generate a simple, step-by-step procedure checklist (numbered list) for solving it. "
-            f"Also, provide a short, real-world analogy (conceptual anchor) for the core concept. "
-            f"Respond only with the markdown content."
+    elif disorder == "Dyscalculia":
+        adaptive_instruction = (
+            "The student has Dyscalculia. Be a supportive math tutor: "
+            "1. Break down all explanations and solutions into a clear, numbered, step-by-step procedure/checklist. "
+            "2. Provide a simple, real-world analogy for the core concept. "
+            "3. Use bold text and bullet points to organize information. "
+            "4. Be encouraging and manage cognitive load by keeping sentences direct and concise."
         )
-        
-    # If no specific adaptation is needed, return the original block
-    if not prompt:
-        return content_block
+    elif disorder == "Executive Function":
+        adaptive_instruction = (
+            "The student has Executive Function Disorder/ADHD. Be a structured tutor: "
+            "1. Start with a brief, single-sentence summary of the answer. "
+            "2. Follow with a clear, numbered, step-by-step procedure/checklist for solving problems. "
+            "3. Use short paragraphs and bold key terms. "
+            "4. Do not offer extraneous information; stay focused on the user's explicit question."
+        )
+    elif disorder == "Dyslexia":
+        adaptive_instruction = (
+            "The student has Dyslexia. Be a supportive tutor focused on language accessibility: "
+            "1. Simplify all complex sentences (use a maximum 8th-grade reading level). "
+            "2. **Bold** all key mathematical terms and operation words. "
+            "3. Use short paragraphs and clear visual spacing. "
+            "4. Maintain a friendly and encouraging tone."
+        )
+    
+    # --- RAG Context and Constraint ---
+    rag_instruction = (
+        "\n\n--- DOCUMENT CONTEXT START ---\n\n"
+        f"{context}"
+        "\n\n--- DOCUMENT CONTEXT END ---\n\n"
+        "**CRITICAL CONSTRAINT:** Answer the user's question *strictly* using the information in the 'DOCUMENT CONTEXT' above. "
+        "Do not use external knowledge. If the context does not contain the answer, state: 'I'm sorry, I could not find the answer in the provided document.' Apply all accessibility rules to your final answer."
+    )
 
-    try:
-        response = GEMINI_CLIENT.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt
-        )
-        
-        # Update the block with the AI's response
-        if content_block["type"] == "prose":
-            content_block["adapted_text"] = response.text
-        elif content_block["type"] == "equation":
-            content_block["adapted_scaffolding"] = response.text
-            
-    except Exception as e:
-        print(f"Gemini API Error for block {content_block['id']}: {e}")
-        # Fallback to original content
-        if content_block["type"] == "prose":
-            content_block["adapted_text"] = original_text
-            
-    return content_block
+    return base_persona + adaptive_instruction + rag_instruction
+
+# 👇 NEW ROUTE: This handles GET requests to the root URL (http://127.0.0.1:5000/)
+@app.route('/', methods=['GET'])
+def index():
+    """Serves the main HTML page for the frontend application."""
+    # Flask looks for 'index.html' inside the 'templates' folder
+    return render_template('index.html')
 
 
 # --- Flask Route ---
 
-@app.route('/api/adapt', methods=['POST'])
-def adapt_textbook():
-    """Main endpoint to handle file upload, OCR, and AI adaptation."""
+@app.route('/chat', methods=['POST'])
+def chat_assistant():
+    """Main endpoint to handle file upload, OCR, RAG, and AI adaptation."""
     
     # 1. Input Validation and Retrieval
     if 'file' not in request.files:
         return jsonify({"error": "No file part in the request"}), 400
     
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-        
+    user_prompt = request.form.get('prompt', '').strip()
     disorder = request.form.get('disorder', 'None')
-    if disorder not in ["Dyscalculia", "Dyslexia", "Dysgraphia", "Language Disorder", "Executive Function", "ADHD", "None"]:
-        return jsonify({"error": "Invalid disorder specified"}), 400
+    
+    if file.filename == '' or not file:
+        return jsonify({"error": "No selected file"}), 400
+    if not user_prompt:
+        return jsonify({"error": "No question (prompt) provided"}), 400
+        
+    valid_disorders = ["Dyscalculia", "Dyslexia", "Executive Function", "None"]
+    if disorder not in valid_disorders:
+        return jsonify({"error": f"Invalid disorder specified: {disorder}. Must be one of {valid_disorders}"}), 400
 
-    # 2. Mathpix OCR and Parsing
+    # 2. Mathpix OCR and Context Generation
     try:
-        # Read the file stream for the API call
+        # Read the file stream once and store it
         file_stream = io.BytesIO(file.read())
         
         # Get OCR response
         ocr_response = call_mathpix_ocr(file_stream, file.filename)
         
-        # Convert raw output into structured blocks
-        content_blocks = parse_mathpix_output(ocr_response)
+        # Use the combined text and LaTeX output as the RAG context
+        context = ocr_response.get('latex_styled', '').strip()
         
+        if not context:
+            return jsonify({"error": "OCR failed to extract readable text from the document."}), 500
+
     except ValueError as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:
-        return jsonify({"error": f"An unexpected error occurred during OCR/Parsing: {str(e)}"}), 500
+        return jsonify({"error": f"An unexpected error occurred during OCR: {str(e)}"}), 500
 
 
-    # 3. AI Adaptation Loop
-    adapted_content = []
-    for block in content_blocks:
-        # Apply AI only if a specific disorder is selected that requires it
-        if disorder != 'None':
-            block = adapt_content_with_gemini(block, disorder)
-        else:
-            # If no disorder, ensure original text is copied to adapted fields for display
-            if block["type"] == "prose":
-                block["adapted_text"] = block["original_text"]
+    # 3. Gemini RAG with Adaptive Instruction
+    try:
+        system_instruction = generate_system_instruction(disorder, context)
+        
+        response = GEMINI_CLIENT.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[user_prompt],
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction
+            )
+        )
+        
+        # 4. Final Response (matches frontend expectation: {"response": "..."})
+        return jsonify({
+            "response": response.text,
+            "status": "success",
+            "disorder_profile": disorder
+        })
             
-        adapted_content.append(block)
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        return jsonify({"error": f"An error occurred while calling the Gemini API: {str(e)}"}), 500
 
-    # 4. Final Response
-    return jsonify({
-        "status": "success",
-        "disorder_profile": disorder,
-        "content": adapted_content
-    })
 
 # --- Run Server ---
 if __name__ == '__main__':
     # Use a high port for hackathon development
-    print("Server running at http://127.0.0.1:8080/api/adapt")
-    app.run(debug=True, port=8080)
+    print("Server running at http://127.0.0.1:5000/")
+    # Changed port to 5000, common for Flask/local deployment
+    app.run(debug=True, port=5000)

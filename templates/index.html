@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accessible Study Assistant (Prototype)</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --brand: #0b5fff;
+      --ok: #0a7f2e;
+      --warn: #b85c00;
+      --error: #a40000;
+      --radius: 14px;
+      --line: 1.8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f1115; --fg:#f5f7fb; --muted:#a5adbd; --brand:#5b8aff; }
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      line-height: var(--line);
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: clamp(1.6rem, 2.2vw + 1rem, 3rem); font-weight: 500; }
+    p { margin: 0; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    textarea {
+      box-sizing: border-box; width: 100%; resize: vertical; min-height: 120px;
+      padding: 12px; margin: 16px 0 0 0; border: 1px solid var(--muted); border-radius: var(--radius);
+      background: var(--bg); color: var(--fg); font-family: monospace; font-size: 1.1rem;
+    }
+    button, input[type="file"]::file-selector-button {
+      background: var(--brand); color: white; border: none; cursor: pointer;
+      padding: 8px 16px; margin: 8px 8px 8px 0; border-radius: var(--radius);
+      font-size: 1rem; font-weight: 500; transition: background 0.2s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    button:hover, input[type="file"]::file-selector-button:hover { background: color-mix(in srgb, var(--brand) 90%, black); }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .tts-controls {
+      display: flex; gap: 8px; align-items: center; margin-top: 16px;
+    }
+    .tts-rate-control {
+      display: flex; gap: 8px; align-items: center;
+      padding: 8px 0;
+    }
+    .tts-rate-control input[type="range"] {
+      width: 100px;
+    }
+    #output {
+      border: 1px solid var(--muted); border-radius: var(--radius);
+      padding: 24px; margin-top: 24px; min-height: 200px; white-space: pre-wrap;
+      background: color-mix(in srgb, var(--bg) 95%, var(--muted));
+    }
+    #output.loading::before {
+      content: "Thinking..."; color: var(--muted); font-style: italic;
+    }
+    .error { color: var(--error); font-weight: 600; }
+    .ok { color: var(--ok); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
+    .file-input-container {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 16px;
+    }
+    .file-input-container label {
+      flex-shrink: 0;
+    }
+    #file-display {
+      font-size: 0.9em; color: var(--muted);
+      max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .disorder-select-container {
+        display: flex; gap: 16px; align-items: center;
+        margin-top: 16px;
+    }
+    .disorder-select-container select {
+        padding: 8px 12px;
+        border: 1px solid var(--muted);
+        border-radius: var(--radius);
+        background: var(--bg);
+        color: var(--fg);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Accessible Study Assistant (Prototype)</h1>
+    <p class="muted">An AI-powered RAG assistant using the Gemini API and document analysis.</p>
+
+    <div class="file-input-container">
+      <label for="file-upload">Upload Document (PDF only):</label>
+      <input type="file" id="file-upload" accept=".pdf" />
+      <span id="file-display">No file selected</span>
+    </div>
+    
+    <div class="disorder-select-container">
+        <label for="disorder-select">Select Student Profile:</label>
+        <select id="disorder-select">
+            <option value="None">Standard Mode</option>
+            <option value="Dyslexia">Dyslexia / Language Disorder</option>
+            <option value="Dyscalculia">Dyscalculia</option>
+            <option value="Executive Function">Executive Function / ADHD</option>
+        </select>
+    </div>
+
+    <form id="chat-form">
+      <textarea id="prompt" placeholder="Ask a question about the document, e.g., 'Summarize the main points' or 'Explain this concept in simple terms.'"></textarea>
+      <button type="submit" id="send-button">Send</button>
+    </form>
+
+    <h2>Response</h2>
+    <div class="tts-rate-control">
+      <label for="rate">Speech Rate:</label>
+      <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1.0" />
+      <span id="rateVal">1.0×</span>
+    </div>
+    <div class="tts-controls">
+      <button id="speak">🔊 Speak</button>
+      <button id="pause">❚❚ Pause/Resume</button>
+      <button id="stop">■ Stop</button>
+      <span class="muted">Tip: Press Spacebar to Play/Pause.</span>
+    </div>
+
+    <div id="output">Awaiting your question...</div>
+
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const synth = window.speechSynthesis;
+    let utter = new SpeechSynthesisUtterance("");
+    let file = null;
+
+    const chatForm = $("chat-form");
+    const promptInput = $("prompt");
+    const disorderSelect = $("disorder-select"); // New element
+    const output = $("output");
+    const sendButton = $("send-button");
+    const fileUpload = $("file-upload");
+    const fileDisplay = $("file-display");
+    const rate = $("rate");
+    const rateVal = $("rateVal");
+
+    // Load saved rate
+    const savedRate = localStorage.getItem('tts_rate');
+    if (savedRate) {
+      rate.value = savedRate;
+      rateVal.textContent = `${parseFloat(savedRate).toFixed(2)}×`;
+    }
+
+    fileUpload.addEventListener('change', (e) => {
+      file = e.target.files[0];
+      if (file) {
+        fileDisplay.textContent = `File: ${file.name}`;
+      } else {
+        fileDisplay.textContent = 'No file selected';
+      }
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userPrompt = promptInput.value.trim();
+      const selectedDisorder = disorderSelect.value; // Get selected disorder
+
+      if (!userPrompt) {
+        output.innerHTML = '<span class="warn">Please enter a question.</span>';
+        return;
+      }
+      
+      if (!file) {
+        output.innerHTML = '<span class="warn">Please upload a PDF document first.</span>';
+        return;
+      }
+
+      synth.cancel(); // Stop any current speech
+      output.innerHTML = '';
+      output.classList.add('loading');
+      sendButton.disabled = true;
+      sendButton.textContent = 'Processing...';
+
+      try {
+        const formData = new FormData();
+        formData.append('prompt', userPrompt);
+        formData.append('disorder', selectedDisorder); // Add disorder to form data
+        formData.append('file', file);
+        
+        // Frontend now POSTs to /chat route
+        const response = await fetch('/chat', { 
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.error) {
+          output.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+        } else {
+          const markdownText = data.response;
+          // Basic markdown to HTML conversion for display
+          let htmlContent = markdownText
+            .replace(/^# (.*)$/gm, '<h3>$1</h3>') // Convert H1 to H3 for display
+            .replace(/^## (.*)$/gm, '<h4>$1</h4>') // Convert H2 to H4
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+            .replace(/^\* |^- /gm, '<li>') // List items (simple)
+            .replace(/`/g, ''); // Remove code blocks for simplicity
+          
+          output.innerHTML = htmlContent;
+          
+          attachToTTS(markdownText);
+          synth.cancel();
+          utter.rate = parseFloat(rate.value);
+          synth.speak(utter); // Speak the new response
+        }
+
+      } catch (error) {
+        console.error('Fetch error:', error);
+        output.innerHTML = `<span class="error">An unexpected error occurred: ${error.message}</span>`;
+      } finally {
+        output.classList.remove('loading');
+        sendButton.disabled = false;
+        sendButton.textContent = 'Send';
+      }
+    });
+
+    function attachToTTS(text) {
+      synth.cancel();
+      utter = new SpeechSynthesisUtterance(stripMarkdown(text));
+      utter.rate = parseFloat(rate.value);
+    }
+
+    function stripMarkdown(md) {
+      return md
+        .replace(/^# .*$/gm, '')
+        .replace(/^## .*$/$/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/^\* |^- /gm, '• ')
+        .replace(/`{1,3}([^`]+)`{1,3}/g, '$1');
+    }
+
+    $("speak").addEventListener('click', () => {
+      // Note: out is not defined, should be output.textContent
+      if (!utter.text) attachToTTS(output.textContent); 
+      utter.rate = parseFloat(rate.value);
+      synth.cancel();
+      synth.speak(utter);
+    });
+    $("pause").addEventListener('click', () => { if (synth.speaking) synth.paused ? synth.resume() : synth.pause(); });
+    $("stop").addEventListener('click', () => synth.cancel());
+
+    rate.addEventListener('input', () => {
+      rateVal.textContent = `${parseFloat(rate.value).toFixed(2)}×`;
+      localStorage.setItem('tts_rate', rate.value);
+      if (synth.speaking && !synth.paused) { synth.cancel(); utter.rate = parseFloat(rate.value); synth.speak(utter); }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ') { e.preventDefault(); synth.speaking && !synth.paused ? synth.pause() : $("speak").click(); }
+      if (e.key === 'Escape') { e.preventDefault(); $("stop").click(); }
+      if (e.key === 'Enter' && !e.shiftKey && promptInput === document.activeElement) {
+        e.preventDefault();
+        $("send-button").click();
+      }
+    });
+
+  </script>
+</body>
+</html>
