@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accessible Study Assistant (Prototype)</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --brand: #1c64f2;
+      --ok: #166534;
+      --warn: #92400e;
+      --error: #991b1b;
+      --radius: 14px;
+      --line: 1.9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f1115; --fg:#f5f7fb; --muted:#a5adbd; --brand:#5b8aff; }
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      line-height: var(--line);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px; }
+    h1 { font-size: clamp(1.6rem, 2.2vw + 1rem, 3rem); font-weight: 600; }
+    h2 { margin-top: 32px; font-weight: 600; }
+    p { margin: 0; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    textarea {
+      box-sizing: border-box; width: 100%; resize: vertical; min-height: 140px;
+      padding: 12px; margin: 16px 0 0 0; border: 1px solid var(--muted); border-radius: var(--radius);
+      background: var(--bg); color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem;
+    }
+    button, input[type="file"]::file-selector-button {
+      background: var(--brand); color: white; border: none; cursor: pointer;
+      padding: 10px 16px; margin: 8px 8px 8px 0; border-radius: var(--radius);
+      font-size: 1rem; font-weight: 600; transition: background 0.2s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    button:hover, input[type="file"]::file-selector-button:hover { background: color-mix(in srgb, var(--brand) 90%, black); }
+    .muted { color: var(--muted); font-size: 0.95rem; }
+
+    .file-input-container { display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap: wrap; }
+    #file-display { font-size: 0.9em; color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .profile-selection-container { margin-top:16px; border:1px solid var(--muted); border-radius: var(--radius); padding: 16px; background: color-mix(in srgb, var(--bg) 95%, var(--muted)); }
+    .profile-selection-container h3 { margin:0 0 8px 0; font-size:1.15rem; font-weight:600; }
+
+    .profile-options { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
+    .profile-option { display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px; border:1px solid var(--muted); border-radius: var(--radius); background:#fff; transition: background 0.2s, border-color 0.2s; }
+    .profile-option:hover { background: color-mix(in srgb, var(--bg) 92%, var(--brand)); border-color: var(--brand); }
+    .profile-option input[type="checkbox"] { margin-right: 6px; accent-color: var(--brand); }
+    .profile-option.selected { background: color-mix(in srgb, var(--brand) 10%, white); border-color: var(--brand); }
+    .option-title { font-weight: 600; }
+    .caption { display:block; font-size: 0.9rem; color: var(--muted); line-height: 1.4; }
+
+    .limit-note { margin-top: 6px; }
+
+    .grid { display:grid; grid-template-columns: 1.2fr 1fr; gap: 24px; margin-top: 18px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    #output {
+      border: 1px solid var(--muted); border-radius: var(--radius);
+      padding: 24px; min-height: 220px; white-space: pre-wrap; background: color-mix(in srgb, var(--bg) 95%, var(--muted));
+    }
+    #output.loading::before { content: "Thinking..."; color: var(--muted); font-style: italic; }
+    .error { color: var(--error); font-weight: 700; }
+    .ok { color: var(--ok); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+
+    .stt-controls {
+      display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap;
+    }
+    .stt-controls button {
+      background: var(--ok);
+    }
+    .stt-controls button:hover {
+      background: color-mix(in srgb, var(--ok) 90%, black);
+    }
+    .stt-status {
+      font-size: 0.9em; color: var(--muted); margin-left: 10px;
+    }
+
+    .tts-controls { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+    .tts-controls select {
+      padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--muted);
+      background: var(--bg); color: var(--fg); font-size: 1rem;
+    }
+    .tts-rate-control { display:flex; gap:8px; align-items:center; padding:8px 0; flex-wrap: wrap; }
+    .tts-rate-control input[type="range"] { width: 120px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Accessible Study Assistant (Prototype)</h1>
+    <p class="muted">An AI-powered RAG assistant using the Gemini API and document analysis.</p>
+
+    <div class="file-input-container">
+      <label for="file-upload">Upload Document (PDF only):</label>
+      <input type="file" id="file-upload" accept=".pdf" />
+      <span id="file-display">No file selected</span>
+    </div>
+
+    <h2>Student Profile</h2>
+    <p>Select all that apply. You can combine multiple supports.</p>
+
+    <div class="profile-selection-container">
+      <h3>Active Learning Accommodations:</h3>
+      <div class="profile-options" id="profile-options">
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Standard" checked> 
+          <div><span class="option-title">Standard Mode</span><span class="caption">For most learners. Provides balanced, readable defaults.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Reading & Language Support">
+          <div><span class="option-title">Reading & Language Support</span><span class="caption">For dyslexia and language disorders. Uses plain language and highlights key terms.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Focus & Planning Support">
+          <div><span class="option-title">Focus & Planning Support</span><span class="caption">For ADHD and executive‑function needs. Breaks work into steps with checklists and timers.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Math Understanding Support">
+          <div><span class="option-title">Math Understanding Support</span><span class="caption">For dyscalculia. Explains step by step and adds simple visuals.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Writing & Expression Support">
+          <div><span class="option-title">Writing & Expression Support</span><span class="caption">For dysgraphia. Reduces typing and offers structured outlines.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Listening & Hearing Support">
+          <div><span class="option-title">Listening & Hearing Support</span><span class="caption">For APD and Deaf/Hard of Hearing users. Provides captions and adjustable TTS pacing.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Vision & Screen-Reader Support">
+          <div><span class="option-title">Vision & Screen-Reader Support</span><span class="caption">For low vision and screen‑reader users. Ensures high contrast and semantic structure.</span></div>
+        </label>
+        <label class="profile-option">
+          <input type="checkbox" name="profile" value="Health & Energy Support">
+          <div><span class="option-title">Health & Energy Support</span><span class="caption">For chronic illness and fatigue. Uses short sessions and lets you resume easily.</span></div>
+        </label>
+      </div>
+      <p class="muted limit-note">Tip: You can pick multiple supports. "Standard Mode" will deselect when others are chosen.</p>
+    </div>
+
+    <div class="grid">
+      <section>
+        <form id="chat-form">
+          <textarea id="prompt" placeholder="Ask about your document… e.g., 'Summarize Chapter 3 for Focus & Planning', or 'Create step-by-step practice for Math Understanding'."></textarea>
+          <div class="stt-controls">
+            <button type="button" id="start-stt">🎤 Start Speaking</button>
+            <button type="button" id="stop-stt" disabled>⏹️ Stop Speaking</button>
+            <span id="stt-status" class="stt-status"></span>
+          </div>
+          <button type="submit" id="send-button">Send</button>
+        </form>
+      </section>
+
+      <aside>
+        <h2>Response</h2>
+        <div class="tts-rate-control">
+          <label for="rate">Speech Rate:</label>
+          <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1.0" />
+          <span id="rateVal">1.0×</span>
+        </div>
+        <div class="tts-controls">
+          <label for="voice">Voice:</label>
+          <select id="voice"></select>
+          <button id="speak" disabled>🔊 Speak</button>
+          <button id="pause" disabled>❚❚ Pause/Resume</button>
+          <button id="stop" disabled>■ Stop</button>
+          <span class="muted">Tip: Spacebar = Play/Pause</span>
+        </div>
+      </aside>
+    </div>
+
+    <div id="output" aria-live="polite">Awaiting your question...</div>
+    <audio id="audio-playback" hidden></audio>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let file = null;
+
+    const chatForm = $("chat-form");
+    const promptInput = $("prompt");
+    const output = $("output");
+    const sendButton = $("send-button");
+    const fileUpload = $("file-upload");
+    const fileDisplay = $("file-display");
+    const rate = $("rate");
+    const rateVal = $("rateVal");
+    const profileOptionsContainer = $("profile-options");
+
+    // ElevenLabs TTS elements
+    const voiceSelect = $("voice");
+    const elevenLabsAudio = $("audio-playback");
+    
+    // STT elements
+    const startSttButton = $("start-stt");
+    const stopSttButton = $("stop-stt");
+    const sttStatus = $("stt-status");
+
+    // ElevenLabs backend URLs
+    const BACKEND_URL_VOICES = "/voices";
+    const BACKEND_URL_TTS = "/tts";
+
+    // Speech Recognition API
+    let recognition;
+    let isRecognizing = false;
+
+    // Load saved rate
+    const savedRate = localStorage.getItem('tts_rate');
+    if (savedRate) { 
+      rate.value = savedRate; 
+      rateVal.textContent = `${parseFloat(savedRate).toFixed(2)}×`; 
+    }
+
+    // --- Profile Selection Logic ---
+    function getSelectedProfiles() {
+      const sel = Array.from(profileOptionsContainer.querySelectorAll('input[name="profile"]:checked')).map(cb => cb.value);
+      if (sel.includes('Standard') && sel.length > 1) return sel.filter(x => x !== 'Standard');
+      return sel.length ? sel : ['Standard'];
+    }
+
+    profileOptionsContainer.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.name === 'profile') {
+        const standardCb = profileOptionsContainer.querySelector('input[name="profile"][value="Standard"]');
+        const checked = Array.from(profileOptionsContainer.querySelectorAll('input[name="profile"]:checked'));
+        const othersChecked = checked.some(cb => cb.value !== 'Standard');
+        
+        if (standardCb && standardCb.checked && othersChecked) {
+          standardCb.checked = false;
+        }
+        
+        const stillChecked = profileOptionsContainer.querySelectorAll('input[name="profile"]:checked');
+        if (stillChecked.length === 0 && standardCb) {
+          standardCb.checked = true;
+        }
+        
+        profileOptionsContainer.querySelectorAll('label.profile-option').forEach(l => 
+          l.classList.toggle('selected', l.querySelector('input').checked)
+        );
+      }
+    });
+
+    profileOptionsContainer.querySelectorAll('label.profile-option').forEach(l => 
+      l.classList.toggle('selected', l.querySelector('input').checked)
+    );
+
+    // --- File Upload ---
+    fileUpload.addEventListener('change', (e) => {
+      file = e.target.files[0];
+      fileDisplay.textContent = file ? `File: ${file.name}` : 'No file selected';
+    });
+
+    // --- Chat Form Submission ---
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userPrompt = promptInput.value.trim();
+      const selectedProfiles = getSelectedProfiles();
+
+      if (!userPrompt) { 
+        output.innerHTML = '<span class="warn">Please enter a question.</span>'; 
+        return; 
+      }
+      if (!file) { 
+        output.innerHTML = '<span class="warn">Please upload a PDF document first.</span>'; 
+        return; 
+      }
+
+      // Disable TTS until we have content
+      [$("speak"), $("pause"), $("stop")].forEach(b => b.disabled = true);
+      elevenLabsAudio.pause();
+      elevenLabsAudio.currentTime = 0;
+      
+      output.innerHTML = '';
+      output.classList.add('loading');
+      sendButton.disabled = true; 
+      sendButton.textContent = 'Processing…';
+
+      try {
+        const formData = new FormData();
+        formData.append('prompt', userPrompt);
+        selectedProfiles.forEach(p => formData.append('profile_types', p));
+        formData.append('file', file);
+
+        const response = await fetch('/chat', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const data = await response.json();
+
+        if (data.error) {
+          output.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+        } else {
+          const markdownText = data.response || '';
+          const htmlContent = markdownText
+            .replace(/^# (.*)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.*)$/gm, '<h4>$1</h4>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/^\* (.*)$/gm, '<ul><li>$1</li></ul>')
+            .replace(/`/g, '');
+          output.innerHTML = htmlContent || '<span class="muted">No content returned.</span>';
+
+          // Enable TTS and auto-speak
+          [$("speak"), $("pause"), $("stop")].forEach(b => b.disabled = false);
+          speakElevenLabs(stripMarkdown(markdownText));
+        }
+      } catch (err) {
+        console.error(err);
+        output.innerHTML = `<span class="error">An unexpected error occurred: ${err.message}</span>`;
+      } finally {
+        output.classList.remove('loading');
+        sendButton.disabled = false; 
+        sendButton.textContent = 'Send';
+      }
+    });
+
+    function stripMarkdown(md) {
+      return md
+        .replace(/^# .*$/gm, '')
+        .replace(/^## .*$/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/^\* |^- /gm, '• ')
+        .replace(/`{1,3}([^`]+)`{1,3}/g, '$1');
+    }
+
+    // --- ElevenLabs TTS ---
+    async function loadVoices() {
+      try {
+        const res = await fetch(BACKEND_URL_VOICES);
+        const voices = await res.json();
+        voiceSelect.innerHTML = '';
+        voices.forEach(v => {
+          const option = document.createElement("option");
+          option.value = v;
+          option.text = v;
+          voiceSelect.add(option);
+        });
+        
+        if (voices.length > 0) {
+          const savedVoice = localStorage.getItem('elevenlabs_voice');
+          if (savedVoice && voices.includes(savedVoice)) {
+            voiceSelect.value = savedVoice;
+          } else {
+            voiceSelect.value = voices[0];
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load ElevenLabs voices", err);
+        const option = document.createElement("option");
+        option.value = "default";
+        option.text = "Error loading voices";
+        voiceSelect.add(option);
+        voiceSelect.disabled = true;
+      }
+    }
+
+    async function speakElevenLabs(text) {
+      if (!text.trim()) return;
+
+      const voice = voiceSelect.value;
+      const rateValue = parseFloat(rate.value);
+
+      try {
+        const res = await fetch(BACKEND_URL_TTS, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ text, voice, rate: rateValue })
+        });
+
+        if (!res.ok) throw new Error("ElevenLabs TTS request failed");
+
+        const blob = await res.blob();
+        const audioURL = URL.createObjectURL(blob);
+
+        elevenLabsAudio.src = audioURL;
+        elevenLabsAudio.playbackRate = rateValue;
+        elevenLabsAudio.play();
+      } catch (err) {
+        console.error("ElevenLabs speech generation error:", err);
+        alert("Failed to generate speech with ElevenLabs. Check console for details.");
+      }
+    }
+
+    $("speak").addEventListener('click', () => {
+      const textToSpeak = stripMarkdown(output.textContent);
+      if (textToSpeak) {
+        elevenLabsAudio.pause();
+        speakElevenLabs(textToSpeak);
+      }
+    });
+
+    $("pause").addEventListener('click', () => {
+      if (elevenLabsAudio.paused) {
+        elevenLabsAudio.play();
+      } else {
+        elevenLabsAudio.pause();
+      }
+    });
+
+    $("stop").addEventListener('click', () => {
+      elevenLabsAudio.pause();
+      elevenLabsAudio.currentTime = 0;
+    });
+
+    rate.addEventListener('input', () => {
+      rateVal.textContent = `${parseFloat(rate.value).toFixed(2)}×`;
+      localStorage.setItem('tts_rate', rate.value);
+      elevenLabsAudio.playbackRate = parseFloat(rate.value);
+    });
+
+    voiceSelect.addEventListener('change', () => {
+      localStorage.setItem('elevenlabs_voice', voiceSelect.value);
+    });
+
+    // --- Speech to Text (Web Speech API) ---
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true; // Changed to true - keeps listening until manually stopped
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isRecognizing = true;
+        sttStatus.textContent = 'Listening...';
+        startSttButton.disabled = true;
+        stopSttButton.disabled = false;
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript + ' ';
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        
+        // Append to existing text instead of replacing
+        if (finalTranscript) {
+          const currentText = promptInput.value.trim();
+          promptInput.value = currentText ? currentText + ' ' + finalTranscript.trim() : finalTranscript.trim();
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        
+        // Don't stop on 'no-speech' error, just continue listening
+        if (event.error === 'no-speech') {
+          sttStatus.textContent = 'Listening... (no speech detected)';
+          return;
+        }
+        
+        sttStatus.innerHTML = `<span class="error">STT Error: ${event.error}</span>`;
+        isRecognizing = false;
+        startSttButton.disabled = false;
+        stopSttButton.disabled = true;
+      };
+
+      recognition.onend = () => {
+        // If still supposed to be recognizing, restart it (keeps continuous mode going)
+        if (isRecognizing) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.log('Recognition restart failed:', e);
+            isRecognizing = false;
+            sttStatus.textContent = 'Stopped listening.';
+            startSttButton.disabled = false;
+            stopSttButton.disabled = true;
+          }
+        } else {
+          sttStatus.textContent = 'Stopped listening.';
+          startSttButton.disabled = false;
+          stopSttButton.disabled = true;
+        }
+      };
+
+      startSttButton.addEventListener('click', () => {
+        if (isRecognizing) {
+          recognition.stop();
+          return;
+        }
+        isRecognizing = true;
+        recognition.start();
+      });
+
+      stopSttButton.addEventListener('click', () => {
+        isRecognizing = false; // Set flag to false so it doesn't restart
+        recognition.stop();
+      });
+
+    } else {
+      startSttButton.disabled = true;
+      stopSttButton.disabled = true;
+      sttStatus.innerHTML = '<span class="warn">Speech recognition not supported in this browser.</span>';
+    }
+
+    // --- Keyboard Shortcuts ---
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' && document.activeElement !== promptInput) { 
+        e.preventDefault(); 
+        const speakBtn = $("speak"); 
+        if (!speakBtn.disabled) { 
+          if (elevenLabsAudio.paused) {
+            elevenLabsAudio.play();
+          } else {
+            elevenLabsAudio.pause();
+          }
+        }
+      }
+      if (e.key === 'Escape') { 
+        e.preventDefault(); 
+        $("stop").click(); 
+      }
+      if (e.key === 'Enter' && !e.shiftKey && promptInput === document.activeElement) { 
+        e.preventDefault(); 
+        $("send-button").click(); 
+      }
+    });
+
+    // Initial load of voices
+    loadVoices();
+  </script>
+</body>
+</html>
+index.html
