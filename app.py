@@ -21,9 +21,9 @@ MATHPIX_APP_KEY = os.getenv("MATHPIX_APP_KEY")
 # ElevenLabs Configuration
 ELEVEN_KEY = os.getenv("ELEVEN_API_KEY")
 VOICES = {
-    "Maya": "EXAVITQu4vr4xnSDxMaL",
-    "Joey": "lLM2bI7XZWLA1bTu2pPJ",
-    "Bella": "bmAn0TLASQN7ctGBMHgN"
+    "Maya": "Bn9xWp6PwkrqKRbq8cX2",  # Replace with your Rachel voice ID
+    "Joey": "ookcfIYgQDpBT5ueX6gr",    # Replace with your Domi voice ID
+    "Bella": "5B2xXvkmkN8xSOhEB92q"  
 }
 
 # Initialize Gemini
