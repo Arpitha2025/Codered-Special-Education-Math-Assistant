@@ -1,0 +1,26 @@
+Chapter 2: Introduction to Quadratic Equations
+
+A quadratic equation is a second-degree polynomial equation. The standard form is:
+$$ax^2 + bx + c = 0$$
+where $a$, $b$, and $c$ are real numbers, and $a \neq 0$. The roots of the equation are the values of $x$ that satisfy the equation.
+
+## The Discriminant
+
+The discriminant, $\Delta$, is a part of the quadratic formula used to determine the nature of the roots without actually solving the equation.
+
+The formula for the discriminant is:
+$$\Delta = b^2 - 4ac$$
+
+If $\Delta > 0$, there are two distinct real roots.
+If $\Delta = 0$, there is exactly one real root (a repeated root).
+If $\Delta < 0$, there are no real roots (two complex roots).
+
+### Word Problem Example
+
+A rectangular garden has a total area of 24 square meters. The length of the garden is 5 meters longer than its width. What is the width of the garden?
+
+Let $w$ be the width.
+Let $l$ be the length, so $l = w + 5$.
+Area is $A = l \times w$.
+Substituting the values gives the equation: $w(w + 5) = 24$.
+This expands to the standard form: $w^2 + 5w - 24 = 0$.
