@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import time
 import requests
 from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
@@ -30,19 +31,21 @@ GEMINI_CLIENT = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 GEMINI_MODEL = "gemini-2.0-flash-exp"
 
 
-# --- Mathpix OCR Function ---
+# --- Mathpix OCR Functions ---
 
-def call_mathpix_ocr(file_bytes, filename):
+def call_mathpix_ocr(file_bytes, filename, app_id, app_key):
     """
-    Sends file to Mathpix API using the correct v3/text endpoint.
-    Mathpix requires multipart/form-data with 'file' and 'options_json'.
+    Sends file to Mathpix API and returns the pdf_id.
+    
+    Returns:
+        tuple: (pdf_id, headers) for polling status
     """
     
-    url = "https://api.mathpix.com/v3/text"
+    url = "https://api.mathpix.com/v3/pdf"
     
     headers = {
-        "app_id": MATHPIX_APP_ID,
-        "app_key": MATHPIX_APP_KEY
+        "app_id": app_id,
+        "app_key": app_key
     }
     
     # Mathpix options for OCR
@@ -56,124 +59,208 @@ def call_mathpix_ocr(file_bytes, filename):
         "enable_tables_fallback": True
     }
     
-    try:
-        print(f"\n{'='*60}")
-        print(f"📄 Processing file: {filename}")
-        print(f"📊 File size: {len(file_bytes)} bytes")
-        print(f"🔑 Using Mathpix API")
-        print(f"   App ID: {MATHPIX_APP_ID[:10]}..." if MATHPIX_APP_ID else "   App ID: MISSING")
-        
-        if not MATHPIX_APP_ID or not MATHPIX_APP_KEY:
-            raise ValueError("Mathpix API credentials are not configured in .env file")
-        
-        # Prepare the multipart form data
-        files = {
-            'file': (filename, io.BytesIO(file_bytes), 'application/pdf')
-        }
-        
-        data = {
-            'options_json': json.dumps(options)
-        }
-        
-        print(f"🔄 Sending request to Mathpix...")
-        
-        # Make the request to Mathpix
-        response = requests.post(
-            url,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=90  # Increased timeout for larger files
-        )
-        
-        print(f"📡 Response status: {response.status_code}")
-        
-        # Check for HTTP errors
-        if response.status_code == 401:
-            print("❌ Authentication failed - check your Mathpix credentials")
-            raise ValueError("Mathpix authentication failed. Please verify your APP_ID and APP_KEY in the .env file.")
-        
-        if response.status_code == 400:
-            print(f"❌ Bad request: {response.text}")
-            raise ValueError(f"Invalid file or request format: {response.text}")
-        
-        if response.status_code == 429:
-            print("❌ Rate limit exceeded")
-            raise ValueError("Mathpix API rate limit exceeded. Please wait or upgrade your plan.")
-        
-        response.raise_for_status()
-        
-        # Parse the JSON response
-        result = response.json()
-        
-        print(f"✅ OCR successful")
-        print(f"📝 Response keys: {list(result.keys())}")
-        
-        # Check for errors in the response
-        if 'error' in result:
-            error_msg = result.get('error', 'Unknown error')
-            error_info = result.get('error_info', {})
-            print(f"❌ Mathpix error: {error_msg}")
-            print(f"   Error info: {error_info}")
-            raise ValueError(f"Mathpix OCR error: {error_msg}")
-        
-        # Extract the text content
-        # Mathpix returns different formats - prioritize text and latex_styled
-        text_content = result.get('text', '')
-        latex_styled = result.get('latex_styled', '')
-        
-        print(f"📊 Extracted text length: {len(text_content)} chars")
-        print(f"📊 Extracted LaTeX length: {len(latex_styled)} chars")
-        
-        if text_content:
-            print(f"📄 Text preview: {text_content[:200]}...")
-        
-        return result
+    print(f"\n{'='*60}")
+    print(f"📄 Processing file: {filename}")
+    print(f"📊 File size: {len(file_bytes)} bytes")
     
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network error: {e}")
-        raise ValueError(f"Failed to connect to Mathpix API: {str(e)}")
+    # Prepare the multipart form data
+    files = {
+        'file': (filename, io.BytesIO(file_bytes), 'application/pdf')
+    }
     
-    except json.JSONDecodeError as e:
-        print(f"❌ JSON decode error: {e}")
-        print(f"Raw response: {response.text[:500]}")
-        raise ValueError("Invalid response from Mathpix API")
+    data = {
+        'options_json': json.dumps(options)
+    }
     
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        raise
+    print(f"📤 Uploading to Mathpix...")
+    
+    # Make the request to Mathpix
+    response = requests.post(
+        url,
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=90
+    )
+    
+    print(f"📡 Response status: {response.status_code}")
+    
+    # Check for HTTP errors
+    if response.status_code == 401:
+        raise ValueError("Mathpix authentication failed. Please verify your APP_ID and APP_KEY.")
+    
+    if response.status_code == 400:
+        raise ValueError(f"Invalid file or request format: {response.text}")
+    
+    if response.status_code == 429:
+        raise ValueError("Mathpix API rate limit exceeded. Please wait or upgrade your plan.")
+    
+    response.raise_for_status()
+    
+    # Parse the JSON response
+    result = response.json()
+    
+    print(f"✅ Upload successful")
+    print(f"📋 Response keys: {list(result.keys())}")
+    
+    # Get the pdf_id
+    pdf_id = result.get('pdf_id')
+    
+    if not pdf_id:
+        raise ValueError("No pdf_id returned from Mathpix API")
+    
+    print(f"🆔 PDF ID: {pdf_id}")
+    
+    return pdf_id, headers
 
 
-def extract_text_from_mathpix_response(mathpix_response):
+def extract_text_from_mathpix_response(pdf_id, headers):
     """
-    Extracts usable text from Mathpix response.
-    Tries multiple formats in order of preference.
+    Polls Mathpix API to check PDF processing status,
+    then retrieves the converted content once complete.
+    
+    Args:
+        pdf_id: The PDF ID returned from the initial upload
+        headers: Dict with 'app_id' and 'app_key'
+    
+    Returns:
+        str: Extracted text content from the PDF
     """
     
-    # Try different text formats from Mathpix
-    text = mathpix_response.get('text', '')
+    # Step 1: Poll for processing status
+    status_url = f"https://api.mathpix.com/v3/pdf/{pdf_id}"
     
-    if not text:
-        # Try latex_styled format
-        text = mathpix_response.get('latex_styled', '')
+    print(f"📊 Polling processing status for PDF ID: {pdf_id}")
     
-    if not text:
-        # Try html format
-        text = mathpix_response.get('html', '')
+    max_attempts = 60  # Max 5 minutes (60 * 5 seconds)
+    attempt = 0
     
-    if not text:
-        # Try markdown format
-        text = mathpix_response.get('markdown', '')
+    while attempt < max_attempts:
+        try:
+            response = requests.get(status_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            status_data = response.json()
+            status = status_data.get('status', '')
+            percent_done = status_data.get('percent_done', 0)
+            num_pages = status_data.get('num_pages', 0)
+            num_pages_completed = status_data.get('num_pages_completed', 0)
+            
+            print(f"📄 Status: {status} | Progress: {percent_done:.1f}% ({num_pages_completed}/{num_pages} pages)")
+            
+            if status == 'completed':
+                print("✅ PDF processing completed!")
+                break
+            elif status == 'error':
+                error_msg = status_data.get('error', 'Unknown error occurred')
+                raise ValueError(f"Mathpix processing error: {error_msg}")
+            
+            # Wait before next poll
+            time.sleep(5)
+            attempt += 1
+            
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Error polling status: {e}")
+            time.sleep(5)
+            attempt += 1
+    
+    if attempt >= max_attempts:
+        raise TimeoutError("PDF processing timed out after 5 minutes")
+    
+    # Step 2: Check conversion status (for docx, tex.zip, etc.)
+    conversion_url = f"https://api.mathpix.com/v3/converter/{pdf_id}"
+    
+    print(f"🔄 Checking conversion status...")
+    
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            response = requests.get(conversion_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            conv_data = response.json()
+            conversion_status = conv_data.get('conversion_status', {})
+            
+            # Check if all requested conversions are complete
+            all_complete = True
+            for format_name, format_status in conversion_status.items():
+                status = format_status.get('status', '')
+                print(f"   {format_name}: {status}")
+                
+                if status == 'error':
+                    error_info = format_status.get('error_info', {})
+                    print(f"   ⚠️ Error in {format_name}: {error_info}")
+                
+                if status != 'completed':
+                    all_complete = False
+            
+            if all_complete or not conversion_status:
+                print("✅ Conversions completed!")
+                break
+            
+            time.sleep(5)
+            attempt += 1
+            
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Error checking conversions: {e}")
+            time.sleep(5)
+            attempt += 1
+    
+    # Step 3: Retrieve the actual content
+    # Try .mmd (Mathpix Markdown) first, then fall back to other formats
+    
+    print(f"📥 Retrieving content...")
+    
+    formats_to_try = [
+        ('mmd', f"https://api.mathpix.com/v3/pdf/{pdf_id}.mmd"),
+        ('md', f"https://api.mathpix.com/v3/pdf/{pdf_id}.md"),
+        ('html', f"https://api.mathpix.com/v3/pdf/{pdf_id}.html"),
+    ]
+    
+    text_content = None
+    
+    for format_name, url in formats_to_try:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                text_content = response.text
+                print(f"✅ Retrieved {format_name} format: {len(text_content)} characters")
+                break
+            else:
+                print(f"⚠️ {format_name} format not available (status {response.status_code})")
+                
+        except Exception as e:
+            print(f"⚠️ Error retrieving {format_name}: {e}")
+    
+    if not text_content:
+        raise ValueError("Failed to retrieve any text content from Mathpix")
     
     # Clean up the text
-    text = text.strip()
+    text_content = text_content.strip()
     
-    print(f"📝 Final extracted text length: {len(text)} characters")
+    print(f"📊 Final extracted text length: {len(text_content)} characters")
     
-    if text:
-        print(f"📄 First 300 chars:\n{text[:300]}")
+    if text_content:
+        print(f"📄 First 300 chars:\n{text_content[:300]}")
     
-    return text
+    return text_content
+
+
+def process_pdf_with_mathpix(file_bytes, filename, app_id, app_key):
+    """
+    Complete workflow: Upload PDF, wait for processing, retrieve content.
+    
+    Returns:
+        str: Extracted text content
+    """
+    # Step 1: Upload PDF and get pdf_id
+    pdf_id, headers = call_mathpix_ocr(file_bytes, filename, app_id, app_key)
+    
+    # Step 2: Poll for completion and retrieve content
+    text_content = extract_text_from_mathpix_response(pdf_id, headers)
+    
+    return text_content
 
 
 def get_profile_instruction(profiles):
@@ -304,10 +391,13 @@ def chat():
     try:
         print("\n🔍 STARTING MATHPIX OCR...")
         
-        mathpix_response = call_mathpix_ocr(file_bytes, file.filename)
-        
-        # Extract text from response
-        context = extract_text_from_mathpix_response(mathpix_response)
+        # Use the complete workflow function
+        context = process_pdf_with_mathpix(
+            file_bytes, 
+            file.filename, 
+            MATHPIX_APP_ID, 
+            MATHPIX_APP_KEY
+        )
         
         if not context or len(context) < 10:
             return jsonify({
@@ -353,7 +443,7 @@ IMPORTANT RULES:
         full_prompt = f"{system_instruction}\n\nSTUDENT QUESTION: {user_prompt}\n\nYour answer:"
         
         print(f"📊 Prompt length: {len(full_prompt)} characters")
-        print(f"🔄 Calling Gemini API...")
+        print(f"📤 Calling Gemini API...")
         
         response = GEMINI_CLIENT.models.generate_content(
             model=GEMINI_MODEL,
@@ -397,7 +487,6 @@ def tts():
     
     if not ELEVEN_KEY:
         print("⚠️ ELEVEN_API_KEY not set - TTS disabled")
-        # Return a simple error audio or empty response
         return {"error": "ElevenLabs API key not configured"}, 500
     
     voice_id = VOICES.get(voice_name, VOICES["Maya"])
@@ -444,7 +533,7 @@ if __name__ == '__main__':
     print("\n" + "="*60)
     print("🚀 ACCESSIBLE STUDY ASSISTANT")
     print("="*60)
-    print(f"\n📍 Server: http://127.0.0.1:5000/")
+    print(f"\n🌐 Server: http://127.0.0.1:5000/")
     print(f"🔧 Test: http://127.0.0.1:5000/test-keys")
     print(f"\n🔑 API Keys:")
     print(f"   Mathpix ID:  {'✓' if MATHPIX_APP_ID else '✗ MISSING'}")
