@@ -1,6 +1,4 @@
-# requirements.txt
-requests
-python-dotenv
-google-genai
-# mathpix client library might be mpxpy or similar, add it here:
-# mpxpy
+Flask==3.0.0
+python-dotenv==1.0.0
+requests==2.31.0
+google-generativeai==0.3.2
