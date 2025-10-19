@@ -11,8 +11,8 @@ ELEVEN_KEY = os.getenv("ELEVEN_API_KEY")
 # Replace these with your actual ElevenLabs Voice IDs
 VOICES = {
     "Maya": "Bn9xWp6PwkrqKRbq8cX2",  # Replace with your Rachel voice ID
-    "Joey": "lLM2bI7XZWLA1bTu2pPJ",    # Replace with your Domi voice ID
-    "Bella": "bmAn0TLASQN7ctGBMHgN"    # Replace with your Bella voice ID
+    "Joey": "pNInz6obpgDQGcFUe3KZ",    # Replace with your Domi voice ID
+    "Bella": "pNInz6obpgDQGcFUe3KZ"    # Replace with your Bella voice ID
 }
 
 app = Flask(__name__, static_folder='.', static_url_path='')
