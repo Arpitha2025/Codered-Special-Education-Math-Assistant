@@ -1,0 +1,16 @@
+/**
+ * @example
+ *     {
+ *         agentId: "agent_id",
+ *         pageSize: 1,
+ *         cursor: "cursor"
+ *     }
+ */
+export interface InvocationsListRequest {
+    /** Filter by agent ID */
+    agentId: string;
+    /** How many Tests to return at maximum. Can not exceed 100, defaults to 30. */
+    pageSize?: number;
+    /** Used for fetching next page. Cursor is returned in the response. */
+    cursor?: string;
+}

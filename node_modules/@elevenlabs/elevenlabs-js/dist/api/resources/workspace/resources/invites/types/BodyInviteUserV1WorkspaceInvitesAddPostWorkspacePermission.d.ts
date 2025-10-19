@@ -1,0 +1,21 @@
+export declare const BodyInviteUserV1WorkspaceInvitesAddPostWorkspacePermission: {
+    readonly External: "external";
+    readonly Admin: "admin";
+    readonly WorkspaceAdmin: "workspace_admin";
+    readonly WorkspaceMember: "workspace_member";
+    readonly SupportL1: "support_l1";
+    readonly SupportL2: "support_l2";
+    readonly Moderator: "moderator";
+    readonly Sales: "sales";
+    readonly VoiceMixer: "voice_mixer";
+    readonly VoiceAdmin: "voice_admin";
+    readonly ConvaiAdmin: "convai_admin";
+    readonly EnterpriseViewer: "enterprise_viewer";
+    readonly QualityCheckAdmin: "quality_check_admin";
+    readonly WorkspaceMigrationAdmin: "workspace_migration_admin";
+    readonly HumanReviewer: "human_reviewer";
+    readonly ProductionsAdmin: "productions_admin";
+    readonly Support: "support";
+    readonly Internal: "internal";
+};
+export type BodyInviteUserV1WorkspaceInvitesAddPostWorkspacePermission = (typeof BodyInviteUserV1WorkspaceInvitesAddPostWorkspacePermission)[keyof typeof BodyInviteUserV1WorkspaceInvitesAddPostWorkspacePermission];
