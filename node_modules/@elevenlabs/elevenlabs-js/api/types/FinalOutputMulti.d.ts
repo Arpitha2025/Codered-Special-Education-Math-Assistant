@@ -1,0 +1,9 @@
+/**
+ * Server payload indicating the final output for a specific context.
+ */
+export interface FinalOutputMulti {
+    /** Indicates this is the final message for the context. */
+    isFinal: true;
+    /** The context_id for which this is the final message. */
+    contextId?: string;
+}

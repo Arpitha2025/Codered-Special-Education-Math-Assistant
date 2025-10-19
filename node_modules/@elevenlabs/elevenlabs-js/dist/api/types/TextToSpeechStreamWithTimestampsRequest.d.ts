@@ -1,0 +1,1 @@
+export type TextToSpeechStreamWithTimestampsRequest = unknown;

@@ -483,7 +483,8 @@ def tts():
     voice_name = data.get("voice", "Maya")
     
     if not text:
-        return {"error": "No text provided"}, 400
+        # This prevents an empty text submission from reaching ElevenLabs
+        return {"error": "No text provided for speech generation."}, 400
     
     if not ELEVEN_KEY:
         print("⚠️ ELEVEN_API_KEY not set - TTS disabled")
@@ -502,7 +503,8 @@ def tts():
             },
             json={
                 "text": text[:1000],  # Limit text length
-                "model_id": "eleven_monolingual_v1",
+                # UPDATED MODEL_ID: This is the critical change
+                "model_id": "eleven_multilingual_v2", 
                 "voice_settings": {
                     "stability": 0.5,
                     "similarity_boost": 0.75
@@ -512,7 +514,8 @@ def tts():
         )
         
         if response.status_code != 200:
-            print(f"❌ ElevenLabs failed: {response.status_code}")
+            # Added more context to error logging
+            print(f"❌ ElevenLabs failed: {response.status_code}. Response: {response.text}")
             return {"error": f"TTS failed: {response.status_code}"}, 500
         
         audio_bytes = io.BytesIO(response.content)

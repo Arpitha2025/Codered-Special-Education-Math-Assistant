@@ -1,0 +1,22 @@
+/** The output audio format */
+export declare const TextToSpeechOutputFormatEnum: {
+    readonly Mp32205032: "mp3_22050_32";
+    readonly Mp34410032: "mp3_44100_32";
+    readonly Mp34410064: "mp3_44100_64";
+    readonly Mp34410096: "mp3_44100_96";
+    readonly Mp344100128: "mp3_44100_128";
+    readonly Mp344100192: "mp3_44100_192";
+    readonly Pcm8000: "pcm_8000";
+    readonly Pcm16000: "pcm_16000";
+    readonly Pcm22050: "pcm_22050";
+    readonly Pcm24000: "pcm_24000";
+    readonly Pcm44100: "pcm_44100";
+    readonly Ulaw8000: "ulaw_8000";
+    readonly Alaw8000: "alaw_8000";
+    readonly Opus4800032: "opus_48000_32";
+    readonly Opus4800064: "opus_48000_64";
+    readonly Opus4800096: "opus_48000_96";
+    readonly Opus48000128: "opus_48000_128";
+    readonly Opus48000192: "opus_48000_192";
+};
+export type TextToSpeechOutputFormatEnum = (typeof TextToSpeechOutputFormatEnum)[keyof typeof TextToSpeechOutputFormatEnum];
